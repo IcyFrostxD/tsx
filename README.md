@@ -4,7 +4,7 @@ Download [files.rar](https://github.com/IcyFrostxD/tsx/blob/main/files.rar) to a
 
 Download [Node.js](https://nodejs.org/en/download) to access various command
 
-====================================================================================
+============================================================================
 
 Open **Command Promt** from your computer
 
@@ -31,13 +31,13 @@ After you finished installed an application name use this code
 **execute a website on your google**
 - npm run web
 
-====================================================================================
+============================================================================
 
 **How to use files.rar?**
 
 Go to your directory | example : "C:\Users\Nueng\Nueng\src\app" <= put your files in here (index.tsx, layout.tsx, etc..)
 
-====================================================================================
+============================================================================
 
 **How to run putty?**
 
@@ -60,13 +60,12 @@ Input this :
 - After you finished all of these copy-paste commands type
 - "node server.js" to execute an API
 
-====================================================================================
-
+============================================================================
 **How to check API?**
 - Write this in website "[119.59.102.161:3095/api](http://119.59.102.161:3095/api)" to check API is running or not
 - Write this in website "[119.59.102.161:3095/api/products](http://119.59.102.161:3095/api/products)" to see fetching code is in there or no
 
-====================================================================================
+============================================================================
 
 Step by Step -
 
@@ -75,3 +74,5 @@ Step by Step -
 3. at first there will be only website, you have to execute "node server.js" to activate API
 4. go to Putty and login
 5. then type **"node server.js"**, to start API
+
+============================================================================
