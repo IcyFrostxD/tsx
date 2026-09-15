@@ -2,3 +2,41 @@ How to run this files?
 
 Download [files.rar](https://github.com/IcyFrostxD/tsx/blob/main/files.rar) to access the code
 
+Download [Node.js](https://nodejs.org/en/download) to access various command
+
+Open command promt from your computer
+- npm install -g expo-cli | to install expo-client
+- npx create-expo-app Your_name (example : Nueng) | to create your folder
+
+After you finished installed an application name use this code
+- cd Your_name (Nueng) | to run your project
+- npm run web | to execute a website on your google
+
+**How to use files.rar?**
+
+Go to your directory | example : "C:\Users\Nueng\Nueng\src\app" <= put your files in here (index.tsx, layout.tsx, etc..)
+
+**How to run putty?**
+
+Download [release](https://github.com/IcyFrostxD/tsx/releases/tag/putty)
+* if you use my account here is infomation
+* User : std6730251263
+* Password : D5w3Qh!Y
+* 
+Input this : 
+- IP = 119.59.102.161 | Port = 2222
+- copy a file name "server.js" then type
+- **"nano server.js"**
+- after you in server.js, right click to paste all of commands
+- CTRL + O to save and CTRL + X to exit server.js
+- next you have to type **"nano .env"**
+- copy a file name ".env" then type
+- nano .env, right click to paste all of commands
+- CTRL + O to save and CTRL + X to exit server.js
+
+- After you finished all of these copy-paste commands type
+- "node server.js" to execute an API
+
+**How to check API?**
+- Run this in website "119.59.102.161:3095/api" to check API is running or not
+- Run "119.59.102.161:3095/api/products" to see fetching code is in there or no
