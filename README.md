@@ -68,3 +68,10 @@ Input this :
 
 ====================================================================================
 
+Step by Step -
+
+1. open **Command Prompt**, Type **"cd Your_name"**
+2. wait until it finish downloaded and lead you into "[localhost:8081](http://localhost:8081/)"
+3. at first there will be only website, you have to execute "node server.js" to activate API
+4. go to Putty and login
+5. then type **"node server.js"**, to start API
