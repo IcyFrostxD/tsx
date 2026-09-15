@@ -76,3 +76,7 @@ Step by Step -
 5. then type **"node server.js"**, to start API
 
 ============================================================================
+
+****FOR ADMIN****
+User : nueng
+Password timetogonow123
