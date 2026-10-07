@@ -274,16 +274,16 @@ export default function AppIndex() {
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       
+      {/* Header จัดวางเลย์เอาต์ใหม่ ให้โลโก้อยู่ซ้าย และกลุ่ม Profile/Wallet/Exit ชิดขวาอย่างลงตัว */}
       <View style={styles.header}>
         <View style={styles.headerTitleWrap}>
           <Text style={styles.headerTitle} numberOfLines={1}>IT Store</Text>
           <Text style={styles.userRoleText} numberOfLines={1}>{isAdmin ? 'Admin' : 'User'}: {currentUsername}</Text>
         </View>
         
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.headerActionsScroll}>
+        <View style={styles.headerRightGroup}>
           {!isAdmin && (
             <>
-              {/* ปุ่ม Profile กลับมาเป็นปุ่มปกติ */}
               <Pressable onPress={() => router.push({ pathname: '/customize', params: { username: currentUsername } })} style={styles.btnNavSolid}>
                 <Text style={styles.btnNavSolidText}>Profile</Text>
               </Pressable>
@@ -299,23 +299,20 @@ export default function AppIndex() {
             </Pressable>
           )}
 
-          {/* ปุ่ม Exit กลับมาอยู่ที่เดิม */}
           <Pressable onPress={handleLogout} style={styles.btnLogout}>
             <Text style={styles.logoutText}>Exit</Text>
           </Pressable>
-        </ScrollView>
+        </View>
       </View>
 
       {!isAdmin && (
         <View style={styles.rankBanner}>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            {/* ปุ่มตะกร้าสินค้า */}
             <Pressable onPress={() => router.push({ pathname: '/cart', params: { username: currentUsername } })} style={styles.btnBannerCart}>
-               <Text style={styles.btnBannerCartText}>🛒 View Cart</Text>
+               <Text style={styles.btnBannerCartText}>View Cart</Text>
             </Pressable>
-            {/* ปุ่มเคลมสินค้าย้ายมาไว้ข้างตะกร้า */}
             <Pressable onPress={() => router.push({ pathname: '/claim_details', params: { username: currentUsername } })} style={styles.btnBannerClaim}>
-               <Text style={styles.btnBannerClaimText}>🛠 Claim</Text>
+               <Text style={styles.btnBannerClaimText}>Claim</Text>
             </Pressable>
           </View>
           <Text style={styles.rankBannerText}>Rank: {userRank}</Text>
@@ -499,19 +496,23 @@ export default function AppIndex() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.primaryBg },
-  header: { backgroundColor: COLORS.headerBg, paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderColor: COLORS.border, zIndex: 999 },
-  headerTitleWrap: { paddingRight: 16, minWidth: 80 },
+  
+  /* ปรับแต่ง Header ใหม่ จัดวาง Flexbox ให้ซ้ายสุดเป็นโลโก้ ขวาสุดเป็นกลุ่มปุ่มโปรไฟล์/เงิน/ออก */
+  header: { backgroundColor: COLORS.headerBg, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: COLORS.border },
+  headerTitleWrap: { flex: 1 },
   headerTitle: { color: COLORS.textDark, fontSize: isSmallScreen ? 18 : 20, fontWeight: '900', letterSpacing: 0.5 },
   userRoleText: { color: COLORS.textLight, fontSize: isSmallScreen ? 11 : 12, fontWeight: '600', marginTop: 2 },
-  headerActionsScroll: { alignItems: 'center', gap: 8, paddingRight: 16 },
   
-  btnNavSolid: { backgroundColor: COLORS.textDark, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, minWidth: 60, alignItems: 'center' },
+  /* กลุ่มปุ่มฝั่งขวา */
+  headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+
+  btnNavSolid: { backgroundColor: COLORS.textDark, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, alignItems: 'center' },
   btnNavSolidText: { color: COLORS.white, fontWeight: '700', fontSize: isSmallScreen ? 11 : 12 },
   
-  btnNavGold: { backgroundColor: '#D97706', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, minWidth: 60, alignItems: 'center' },
+  btnNavGold: { backgroundColor: '#D97706', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, alignItems: 'center' },
   btnNavGoldText: { color: COLORS.white, fontWeight: '800', fontSize: isSmallScreen ? 11 : 12 },
   
-  btnLogout: { paddingHorizontal: 12, paddingVertical: 8 },
+  btnLogout: { paddingHorizontal: 8, paddingVertical: 8 },
   logoutText: { color: COLORS.btnDelete, fontSize: isSmallScreen ? 13 : 14, fontWeight: '800' },
   
   rankBanner: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#F8FAFC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: COLORS.border },
@@ -520,7 +521,6 @@ const styles = StyleSheet.create({
   btnBannerCart: { backgroundColor: '#0F172A', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center', flexDirection: 'row' },
   btnBannerCartText: { color: COLORS.white, fontWeight: '700', fontSize: isSmallScreen ? 11 : 12 },
 
-  // สไตล์สำหรับปุ่ม Claim ที่มาอยู่คู่กัน
   btnBannerClaim: { backgroundColor: '#EF4444', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center', flexDirection: 'row' },
   btnBannerClaimText: { color: COLORS.white, fontWeight: '700', fontSize: isSmallScreen ? 11 : 12 },
 
