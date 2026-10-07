@@ -78,6 +78,33 @@ export default function CartScreen() {
     } catch (e) { Toast.show({ type: 'error', text1: 'Failed to remove item' }); }
   };
 
+  // ฟังก์ชันสำหรับเพิ่ม/ลดจำนวนสินค้า
+  const handleUpdateQty = async (cartId: number, currentQty: number, maxStock: number, action: 'increase' | 'decrease') => {
+    let newQty = currentQty;
+    
+    if (action === 'increase') {
+      if (currentQty >= maxStock) {
+        Toast.show({ type: 'error', text1: 'Out of Stock', text2: 'ไม่สามารถเพิ่มได้เกินสต็อกที่มี' });
+        return;
+      }
+      newQty += 1;
+    } else {
+      if (currentQty <= 1) return; // ห้ามลดต่ำกว่า 1
+      newQty -= 1;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/cart/${cartId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ quantity: newQty })
+      });
+      if (res.ok) fetchCart();
+    } catch (e) {
+      Toast.show({ type: 'error', text1: 'Network Error' });
+    }
+  };
+
   const subtotal = cartItems.reduce((acc, item) => acc + (item.price * item.cart_qty), 0);
   const discountPercent = selectedCoupon ? selectedCoupon.discount_percent : 0;
   const discountAmount = (subtotal * discountPercent) / 100;
@@ -162,20 +189,49 @@ export default function CartScreen() {
         {cartItems.length === 0 ? (
           <Text style={{textAlign: 'center', marginTop: 50, color: COLORS.textLight}}>Your cart is empty.</Text>
         ) : (
-          cartItems.map((item) => (
-            <View key={item.cart_id} style={styles.cartItem}>
-              {item.image_filename ? (
-                <Image source={{ uri: item.image_filename }} style={styles.itemImg} resizeMode="cover" />
-              ) : <View style={styles.noImg} />}
-              <View style={styles.itemInfo}>
-                <Text style={styles.itemName} numberOfLines={1}>{item.product_name}</Text>
-                <Text style={styles.itemDetail}>Price: THB {item.price} | Qty: {item.cart_qty}</Text>
+          cartItems.map((item) => {
+            // เช็คสถานะปุ่ม
+            const isMaxStock = item.cart_qty >= item.stock_qty;
+            const isMinStock = item.cart_qty <= 1;
+
+            return (
+              <View key={item.cart_id} style={styles.cartItem}>
+                {item.image_filename ? (
+                  <Image source={{ uri: item.image_filename }} style={styles.itemImg} resizeMode="cover" />
+                ) : <View style={styles.noImg} />}
+                
+                <View style={styles.itemInfo}>
+                  <Text style={styles.itemName} numberOfLines={1}>{item.product_name}</Text>
+                  <Text style={styles.itemDetail}>Price: THB {item.price}</Text>
+
+                  {/* ส่วนควบคุมจำนวนสินค้า */}
+                  <View style={styles.qtyRow}>
+                    <Pressable 
+                      style={[styles.qtyBtn, isMinStock && styles.qtyBtnDisabled]} 
+                      onPress={() => handleUpdateQty(item.cart_id, item.cart_qty, item.stock_qty, 'decrease')}
+                      disabled={isMinStock}
+                    >
+                      <Text style={styles.qtyBtnText}>-</Text>
+                    </Pressable>
+                    
+                    <Text style={styles.qtyValue}>{item.cart_qty}</Text>
+                    
+                    <Pressable 
+                      style={[styles.qtyBtn, isMaxStock && styles.qtyBtnDisabled]} 
+                      onPress={() => handleUpdateQty(item.cart_id, item.cart_qty, item.stock_qty, 'increase')}
+                      disabled={isMaxStock}
+                    >
+                      <Text style={styles.qtyBtnText}>+</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <Pressable onPress={() => removeItem(item.cart_id)} style={styles.btnRemove}>
+                  <Text style={styles.btnRemoveText}>X</Text>
+                </Pressable>
               </View>
-              <Pressable onPress={() => removeItem(item.cart_id)} style={styles.btnRemove}>
-                <Text style={styles.btnRemoveText}>X</Text>
-              </Pressable>
-            </View>
-          ))
+            );
+          })
         )}
 
         {coupons.length > 0 && cartItems.length > 0 && (
@@ -187,7 +243,9 @@ export default function CartScreen() {
               </Pressable>
               {coupons.map((c) => (
                 <Pressable key={c.id} style={[styles.couponBox, selectedCoupon?.id === c.id && styles.couponBoxActive]} onPress={() => setSelectedCoupon(c)}>
-                  <Text style={[styles.couponText, selectedCoupon?.id === c.id && styles.couponTextActive]}>{c.discount_percent}% OFF</Text>
+                  <Text style={[styles.couponText, selectedCoupon?.id === c.id && styles.couponTextActive]}>
+                    {c.discount_percent}% OFF {c.expire_month ? '(Rank)' : '(Spin)'}
+                  </Text>
                 </Pressable>
               ))}
             </ScrollView>
@@ -227,7 +285,6 @@ export default function CartScreen() {
               <Pressable style={[styles.paymentOption, paymentMethod === 'Wallet' && styles.paymentOptionActive]} onPress={() => setPaymentMethod('Wallet')}>
                 <Text style={[styles.paymentText, paymentMethod === 'Wallet' && styles.paymentTextActive]}>Wallet</Text>
               </Pressable>
-              {/* ตัด COD ออกเหลือแค่ Wallet และ QR Pay */}
               <Pressable style={[styles.paymentOption, paymentMethod === 'QR' && styles.paymentOptionActive]} onPress={() => setPaymentMethod('QR')}>
                 <Text style={[styles.paymentText, paymentMethod === 'QR' && styles.paymentTextActive]}>QR Pay</Text>
               </Pressable>
@@ -259,14 +316,24 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textDark },
   backText: { fontSize: 16, color: COLORS.btnCancel, fontWeight: '700' },
   scrollContent: { padding: 16 },
+  
   cartItem: { flexDirection: 'row', backgroundColor: COLORS.white, padding: 12, borderRadius: 12, marginBottom: 12, alignItems: 'center' },
-  itemImg: { width: 60, height: 60, borderRadius: 8, marginRight: 12 },
-  noImg: { width: 60, height: 60, borderRadius: 8, marginRight: 12, backgroundColor: '#E9ECEF' },
-  itemInfo: { flex: 1 },
+  itemImg: { width: 70, height: 70, borderRadius: 8, marginRight: 12 },
+  noImg: { width: 70, height: 70, borderRadius: 8, marginRight: 12, backgroundColor: '#E9ECEF' },
+  itemInfo: { flex: 1, justifyContent: 'center' },
   itemName: { fontSize: 15, fontWeight: '700', color: COLORS.textDark, marginBottom: 4 },
-  itemDetail: { fontSize: 13, color: COLORS.textLight },
-  btnRemove: { padding: 10 },
-  btnRemoveText: { color: COLORS.btnCancel, fontWeight: '900', fontSize: 16 },
+  itemDetail: { fontSize: 13, color: COLORS.textLight, marginBottom: 6 },
+  
+  // สไตล์สำหรับปุ่มเพิ่ม/ลดสินค้า
+  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  qtyBtn: { width: 28, height: 28, backgroundColor: '#F1F5F9', borderRadius: 6, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#CBD5E1' },
+  qtyBtnDisabled: { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0', opacity: 0.4 },
+  qtyBtnText: { fontSize: 16, fontWeight: '700', color: '#475569' },
+  qtyValue: { fontSize: 14, fontWeight: '700', color: '#0F172A', minWidth: 20, textAlign: 'center' },
+
+  btnRemove: { padding: 10, marginLeft: 5 },
+  btnRemoveText: { color: COLORS.btnCancel, fontWeight: '900', fontSize: 18 },
+  
   couponSection: { marginTop: 10, marginBottom: 20 },
   couponTitle: { fontSize: 16, fontWeight: '700', color: COLORS.textDark, marginBottom: 10 },
   couponScroll: { flexDirection: 'row' },
@@ -274,6 +341,7 @@ const styles = StyleSheet.create({
   couponBoxActive: { backgroundColor: COLORS.couponActive, borderColor: COLORS.couponActive },
   couponText: { color: COLORS.textDark, fontWeight: '700', fontSize: 14 },
   couponTextActive: { color: COLORS.white },
+  
   footer: { backgroundColor: COLORS.white, padding: 20, borderTopWidth: 1, borderColor: COLORS.border },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   summaryLabel: { fontSize: 15, color: COLORS.textLight, fontWeight: '600' },
@@ -281,19 +349,23 @@ const styles = StyleSheet.create({
   grandTotal: { fontSize: 22, fontWeight: '800', color: COLORS.btnPrimary },
   btnCheckout: { backgroundColor: COLORS.btnConfirm, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   btnCheckoutText: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 },
   modalCard: { width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 20, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 10, textAlign: 'center' },
   inputLabel: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 4, marginTop: 10 },
   input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: '#0F172A', width: '100%' },
+  
   paymentContainer: { flexDirection: 'row', gap: 6, marginTop: 4 },
   paymentOption: { flex: 1, backgroundColor: '#F1F5F9', paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center' },
   paymentOptionActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
   paymentText: { fontSize: 12, fontWeight: '700', color: '#475569' },
   paymentTextActive: { color: '#FFFFFF' },
+  
   modalTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 10 },
   modalTotalLabel: { fontSize: 14, fontWeight: '700', color: '#64748B' },
   modalTotalValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  
   modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 16 },
   cancelBtn: { paddingHorizontal: 12, paddingVertical: 8, justifyContent: 'center' },
   cancelBtnText: { color: '#64748B', fontSize: 14, fontWeight: '600' },
