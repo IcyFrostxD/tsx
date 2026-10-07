@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Dimensions, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 
@@ -25,6 +25,12 @@ export default function CartScreen() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [selectedCoupon, setSelectedCoupon] = useState<any>(null);
 
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('Wallet'); 
+
   useFocusEffect(
     useCallback(() => {
       fetchUserData();
@@ -37,7 +43,12 @@ export default function CartScreen() {
     try {
       const res = await fetch(`${API_BASE_URL}/user/${currentUsername}`);
       const data = await res.json();
-      if (res.ok) setWallet(Number(data.wallet) || 0);
+      if (res.ok) {
+        setWallet(Number(data.wallet) || 0);
+        if (data.name) setFullName(data.name);
+        if (data.phone) setPhone(data.phone);
+        if (data.address) setAddress(data.address);
+      }
     } catch (e) { }
   };
 
@@ -72,48 +83,60 @@ export default function CartScreen() {
   const discountAmount = (subtotal * discountPercent) / 100;
   const grandTotal = subtotal - discountAmount;
 
-  // ฟังก์ชันป้องกัน GO_BACK Error
-  const navigateBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace({ pathname: '/', params: { logged_in: 'true', username: currentUsername } });
-    }
-  };
-
-  const handleCheckoutPress = () => {
+  const handleOpenCheckout = () => {
     if (cartItems.length === 0) return Toast.show({ type: 'error', text1: 'Cart is empty' });
-    if (currentUsername !== 'nueng' && wallet < grandTotal) return Toast.show({ type: 'error', text1: 'Insufficient balance', text2: 'Please top up your wallet' });
-
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm('Do you want to proceed with the payment?');
-      if (confirmed) executeCheckout();
-    } else {
-      Alert.alert('Confirm Checkout', 'Do you want to proceed with the payment?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Confirm', style: 'default', onPress: () => executeCheckout() },
-      ]);
-    }
+    setIsCheckoutModalOpen(true);
   };
 
-  const executeCheckout = async () => {
+  const handleConfirmOrder = async () => {
+    if (!fullName.trim() || !phone.trim() || !address.trim()) {
+      return Toast.show({ type: 'error', text1: 'Missing Information', text2: 'Please fill in delivery details.' });
+    }
+
+    if (paymentMethod === 'Wallet' && currentUsername !== 'nueng' && wallet < grandTotal) {
+      return Toast.show({ type: 'error', text1: 'Insufficient balance', text2: 'Please top up your wallet.' });
+    }
+
+    if (paymentMethod === 'QR') {
+      setIsCheckoutModalOpen(false);
+      router.replace({ 
+        pathname: '/payment', 
+        params: { 
+          total: grandTotal, 
+          username: currentUsername,
+          coupon_id: selectedCoupon ? String(selectedCoupon.id) : '',
+          fullName,
+          phone,
+          address,
+          paymentMethod
+        } 
+      });
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: currentUsername, coupon_id: selectedCoupon?.id })
+        body: JSON.stringify({ 
+          username: currentUsername, 
+          coupon_id: selectedCoupon?.id,
+          fullName: fullName.trim(),
+          phone: phone.trim(),
+          address: address.trim(),
+          paymentMethod: paymentMethod
+        })
       });
       const data = await res.json();
 
       if (res.ok) {
+        setIsCheckoutModalOpen(false);
         setCartItems([]);
         setSelectedCoupon(null);
-        if (data.earnedSpins > 0) {
-          Toast.show({ type: 'success', text1: 'Payment Successful!', text2: `You earned ${data.earnedSpins} spins!` });
-        } else {
-          Toast.show({ type: 'success', text1: 'Payment Successful!' });
-        }
-        setTimeout(() => navigateBack(), 2000);
+        
+        const spinMsg = data.earnedSpins > 0 ? `You earned ${data.earnedSpins} spins!` : '';
+        Toast.show({ type: 'success', text1: 'Payment Successful!', text2: spinMsg });
+        setTimeout(() => router.back(), 2000);
       } else {
         Toast.show({ type: 'error', text1: 'Checkout Failed', text2: data.error });
       }
@@ -124,7 +147,15 @@ export default function CartScreen() {
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Shopping Cart</Text>
-        <Pressable onPress={navigateBack}><Text style={styles.backText}>Close</Text></Pressable>
+        <Pressable onPress={() => {
+            if (router.canGoBack()) {
+                router.back();
+            } else {
+                router.replace({ pathname: '/', params: { logged_in: 'true', username: currentUsername } });
+            }
+        }}>
+          <Text style={styles.backText}>Close</Text>
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -151,18 +182,11 @@ export default function CartScreen() {
           <View style={styles.couponSection}>
             <Text style={styles.couponTitle}>Select a Coupon:</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.couponScroll}>
-              <Pressable 
-                style={[styles.couponBox, !selectedCoupon && styles.couponBoxActive]} 
-                onPress={() => setSelectedCoupon(null)}
-              >
+              <Pressable style={[styles.couponBox, !selectedCoupon && styles.couponBoxActive]} onPress={() => setSelectedCoupon(null)}>
                 <Text style={[styles.couponText, !selectedCoupon && styles.couponTextActive]}>No Coupon</Text>
               </Pressable>
               {coupons.map((c) => (
-                <Pressable 
-                  key={c.id} 
-                  style={[styles.couponBox, selectedCoupon?.id === c.id && styles.couponBoxActive]} 
-                  onPress={() => setSelectedCoupon(c)}
-                >
+                <Pressable key={c.id} style={[styles.couponBox, selectedCoupon?.id === c.id && styles.couponBoxActive]} onPress={() => setSelectedCoupon(c)}>
                   <Text style={[styles.couponText, selectedCoupon?.id === c.id && styles.couponTextActive]}>{c.discount_percent}% OFF</Text>
                 </Pressable>
               ))}
@@ -179,10 +203,52 @@ export default function CartScreen() {
         </View>
         <View style={styles.summaryRow}><Text style={[styles.summaryLabel, {fontSize: 18, color: COLORS.textDark}]}>Total:</Text><Text style={styles.grandTotal}>THB {grandTotal}</Text></View>
         
-        <Pressable style={[styles.btnCheckout, cartItems.length === 0 && {backgroundColor: COLORS.textLight}]} onPress={handleCheckoutPress} disabled={cartItems.length === 0}>
+        <Pressable style={[styles.btnCheckout, cartItems.length === 0 && {backgroundColor: COLORS.textLight}]} onPress={handleOpenCheckout} disabled={cartItems.length === 0}>
           <Text style={styles.btnCheckoutText}>Checkout</Text>
         </Pressable>
       </View>
+
+      <Modal visible={isCheckoutModalOpen} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Delivery & Payment</Text>
+
+            <Text style={styles.inputLabel}>Full Name</Text>
+            <TextInput style={styles.input} placeholder="John Doe" placeholderTextColor="#94A3B8" value={fullName} onChangeText={setFullName} />
+
+            <Text style={styles.inputLabel}>Phone Number</Text>
+            <TextInput style={styles.input} placeholder="08xxxxxxxx" placeholderTextColor="#94A3B8" keyboardType="phone-pad" value={phone} onChangeText={setPhone} />
+
+            <Text style={styles.inputLabel}>Address</Text>
+            <TextInput style={[styles.input, { height: 60, textAlignVertical: 'top' }]} placeholder="House No, Street, City" placeholderTextColor="#94A3B8" multiline value={address} onChangeText={setAddress} />
+
+            <Text style={styles.inputLabel}>Payment Method</Text>
+            <View style={styles.paymentContainer}>
+              <Pressable style={[styles.paymentOption, paymentMethod === 'Wallet' && styles.paymentOptionActive]} onPress={() => setPaymentMethod('Wallet')}>
+                <Text style={[styles.paymentText, paymentMethod === 'Wallet' && styles.paymentTextActive]}>Wallet</Text>
+              </Pressable>
+              {/* ตัด COD ออกเหลือแค่ Wallet และ QR Pay */}
+              <Pressable style={[styles.paymentOption, paymentMethod === 'QR' && styles.paymentOptionActive]} onPress={() => setPaymentMethod('QR')}>
+                <Text style={[styles.paymentText, paymentMethod === 'QR' && styles.paymentTextActive]}>QR Pay</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.modalTotalRow}>
+              <Text style={styles.modalTotalLabel}>Net Total:</Text>
+              <Text style={styles.modalTotalValue}>THB {grandTotal}</Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setIsCheckoutModalOpen(false)} style={styles.cancelBtn}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={handleConfirmOrder} style={styles.saveBtn}>
+                <Text style={styles.saveBtnText}>Confirm Order</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -214,5 +280,23 @@ const styles = StyleSheet.create({
   summaryValue: { fontSize: 15, color: COLORS.textDark, fontWeight: '700' },
   grandTotal: { fontSize: 22, fontWeight: '800', color: COLORS.btnPrimary },
   btnCheckout: { backgroundColor: COLORS.btnConfirm, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
-  btnCheckoutText: { color: COLORS.white, fontSize: 18, fontWeight: '800' }
+  btnCheckoutText: { color: COLORS.white, fontSize: 18, fontWeight: '800' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+  modalCard: { width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 20, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 6 },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 10, textAlign: 'center' },
+  inputLabel: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 4, marginTop: 10 },
+  input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13, color: '#0F172A', width: '100%' },
+  paymentContainer: { flexDirection: 'row', gap: 6, marginTop: 4 },
+  paymentOption: { flex: 1, backgroundColor: '#F1F5F9', paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#CBD5E1', alignItems: 'center', justifyContent: 'center' },
+  paymentOptionActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+  paymentText: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  paymentTextActive: { color: '#FFFFFF' },
+  modalTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0', paddingTop: 10 },
+  modalTotalLabel: { fontSize: 14, fontWeight: '700', color: '#64748B' },
+  modalTotalValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 16 },
+  cancelBtn: { paddingHorizontal: 12, paddingVertical: 8, justifyContent: 'center' },
+  cancelBtnText: { color: '#64748B', fontSize: 14, fontWeight: '600' },
+  saveBtn: { backgroundColor: '#0F172A', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 },
+  saveBtnText: { color: '#FFF', fontSize: 14, fontWeight: '700' },
 });
