@@ -18,33 +18,50 @@ const CATEGORIES = ['All', 'Mouse', 'Monitor', 'Keyboard', 'Mousepad', 'Headphon
 const API_BASE_URL = 'http://119.59.102.161:3095/api';
 
 const calculateGlobalAIMatch = (productCategory: string, globalStats: Record<string, number>) => {
-  const scores = Object.values(globalStats);
-  if (scores.length === 0) return 30; 
+  const catList = ['Mouse', 'Monitor', 'Keyboard', 'Mousepad', 'Headphone', 'Gamepad'];
   
-  const maxScore = Math.max(...scores);
-  if (maxScore === 0) return 30;
+  const globalVector = catList.map(cat => globalStats[cat] || 0);
+  const isGlobalEmpty = globalVector.every(v => v === 0);
+  if (isGlobalEmpty) return 30; 
 
-  const catScore = globalStats[productCategory] || 0;
-  let percentage = Math.round((catScore / maxScore) * 100);
-  return Math.max(percentage, 15);
+  const productVector = catList.map(cat => (productCategory === cat ? 1 : 0));
+
+  let dotProduct = 0, normGlobal = 0, normProduct = 0;
+  for (let i = 0; i < globalVector.length; i++) {
+    dotProduct += globalVector[i] * productVector[i];
+    normGlobal += Math.pow(globalVector[i], 2);
+    normProduct += Math.pow(productVector[i], 2);
+  }
+
+  if (normGlobal === 0 || normProduct === 0) return 15;
+  
+  const similarity = dotProduct / (Math.sqrt(normGlobal) * Math.sqrt(normProduct));
+  let percentage = Math.round(similarity * 100);
+
+  return Math.max(percentage, 10); 
 };
 
 const PRIZES_DATA = [
-  { name: "5% Discount", angle: 190 },       
-  { name: "No Prize", angle: 130 },          
+  { name: "5% Discount", angle: 130 },       
+  { name: "No Prize", angle: 190 },          
   { name: "10% Discount", angle: 20 },       
   { name: "15% Discount", angle: 15 },       
   { name: "iPhone 18 Pro Max", angle: 5 }   
 ];
 
 let currentA = 0;
-const wheelSlices = PRIZES_DATA.map(p => {
-  const start = currentA;
-  const end = currentA + p.angle;
-  const textAngle = currentA + (p.angle / 2);
-  const lineAngle = end;
-  currentA = end;
-  return { ...p, start, end, textAngle, lineAngle };
+const wheelSlices = PRIZES_DATA.map((p, index) => {
+  const probStart = currentA;
+  const probEnd = currentA + p.angle;
+  currentA = probEnd;
+
+  const visualAngle = 360 / 5;
+  const visualStart = index * visualAngle;
+  const visualEnd = visualStart + visualAngle;
+  const textAngle = visualStart + (visualAngle / 2);
+  const lineAngle = visualEnd;
+
+  return { ...p, probStart, probEnd, visualStart, visualEnd, textAngle, lineAngle };
 });
 
 export default function AppIndex() {
@@ -209,23 +226,18 @@ export default function AppIndex() {
     let winningSlice = wheelSlices[0];
     
     for (let i = 0; i < wheelSlices.length; i++) {
-      if (r >= wheelSlices[i].start && r < wheelSlices[i].end) {
+      if (r >= wheelSlices[i].probStart && r < wheelSlices[i].probEnd) {
         winningSlice = wheelSlices[i];
         break;
       }
     }
 
-    const PADDING = 1.5; 
-    let safeStart = winningSlice.start + PADDING;
-    let safeEnd = winningSlice.end - PADDING;
-    if (safeEnd <= safeStart) {
-      safeStart = winningSlice.start + 0.2;
-      safeEnd = winningSlice.end - 0.2;
-    }
-    if (r < safeStart) r = safeStart;
-    if (r > safeEnd) r = safeEnd;
+    const PADDING = 5; 
+    let safeStart = winningSlice.visualStart + PADDING;
+    let safeEnd = winningSlice.visualEnd - PADDING;
+    let targetVisualAngle = safeStart + Math.random() * (safeEnd - safeStart);
 
-    const actualRotation = (360 - r) % 360;
+    const actualRotation = (360 - targetVisualAngle) % 360;
     const totalRotation = (360 * 5) + actualRotation;
 
     Animated.timing(spinAnim, {
@@ -269,16 +281,35 @@ export default function AppIndex() {
     outputRange: ['0deg', '360deg']
   });
 
+  const getRankStyle = (rankStr: string) => {
+    switch(rankStr.toUpperCase()) {
+      case 'PLATINUM': return { bg: '#E0F2FE', text: '#0284C7', border: '#7DD3FC', icon: '💎' };
+      case 'GOLD': return { bg: '#FEF3C7', text: '#D97706', border: '#FCD34D', icon: '🥇' };
+      case 'SILVER': return { bg: '#F1F5F9', text: '#475569', border: '#CBD5E1', icon: '🥈' };
+      default: return { bg: '#FFEDD5', text: '#C2410C', border: '#FDBA74', icon: '🥉' }; // BRONZE
+    }
+  };
+
+  const rankStyle = getRankStyle(userRank);
+
   if (!isLoggedIn) return <View style={styles.container} />;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       
-      {/* Header จัดวางเลย์เอาต์ใหม่ ให้โลโก้อยู่ซ้าย และกลุ่ม Profile/Wallet/Exit ชิดขวาอย่างลงตัว */}
       <View style={styles.header}>
-        <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerTitle} numberOfLines={1}>IT Store</Text>
-          <Text style={styles.userRoleText} numberOfLines={1}>{isAdmin ? 'Admin' : 'User'}: {currentUsername}</Text>
+        <View style={styles.headerLeftGroup}>
+          <View style={[styles.avatarRing, { borderColor: isAdmin ? '#CBD5E1' : rankStyle.text }]}>
+            <Image 
+              source={require('../../assets/image_38b4e5.jpg')} 
+              style={styles.logoImage} 
+              resizeMode="cover" 
+            />
+          </View>
+          <View style={styles.userInfoCol}>
+            <Text style={styles.userRoleBadge}>{isAdmin ? 'Admin' : 'User'}</Text>
+            <Text style={styles.userNameText} numberOfLines={1}>{currentUsername}</Text>
+          </View>
         </View>
         
         <View style={styles.headerRightGroup}>
@@ -292,13 +323,11 @@ export default function AppIndex() {
               </Pressable>
             </>
           )}
-
           {isAdmin && (
             <Pressable onPress={() => router.push({ pathname: '/dashboard', params: { logged_in: 'true', username: currentUsername } })} style={styles.btnNavSolid}>
               <Text style={styles.btnNavSolidText}>Dashboard</Text>
             </Pressable>
           )}
-
           <Pressable onPress={handleLogout} style={styles.btnLogout}>
             <Text style={styles.logoutText}>Exit</Text>
           </Pressable>
@@ -315,12 +344,28 @@ export default function AppIndex() {
                <Text style={styles.btnBannerClaimText}>Claim</Text>
             </Pressable>
           </View>
-          <Text style={styles.rankBannerText}>Rank: {userRank}</Text>
+          
+          <View style={[styles.rankBadge, { backgroundColor: rankStyle.bg, borderColor: rankStyle.border }]}>
+            <Text style={[styles.rankBannerText, { color: rankStyle.text }]}>
+              {rankStyle.icon} RANK: {userRank}
+            </Text>
+          </View>
         </View>
       )}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <TextInput style={styles.searchInput} placeholder="Search products..." placeholderTextColor={COLORS.textLight} value={searchQuery} onChangeText={setSearchQuery} />
+        
+        {/* ช่องค้นหาดีไซน์ใหม่ */}
+        <View style={styles.searchContainer}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput 
+            style={styles.searchInputModern} 
+            placeholder="Search products..." 
+            placeholderTextColor="#94A3B8" 
+            value={searchQuery} 
+            onChangeText={setSearchQuery} 
+          />
+        </View>
         
         <Pressable style={styles.catDropdownBtn} onPress={() => setShowCategoryModal(true)}>
           <Text style={styles.catDropdownText}>Category: {selectedCategory} ▼</Text>
@@ -337,10 +382,23 @@ export default function AppIndex() {
                 return (
                   <View key={item.id} style={styles.recCard}>
                     <View style={{ position: 'relative' }}>
-                      {item.image_filename ? <Image source={{ uri: item.image_filename }} style={styles.recImage} /> : <View style={styles.recNoImage} />}
-                      <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: aiScore > 75 ? '#10B981' : '#6C757D', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                        <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800' }}>Match {aiScore}%</Text>
+                      <View style={isRecOutOfStock ? { opacity: 0.4 } : {}}>
+                        {item.image_filename ? <Image source={{ uri: item.image_filename }} style={styles.recImage} /> : <View style={styles.recNoImage} />}
                       </View>
+                      
+                      {isRecOutOfStock && (
+                        <View style={styles.outOfStockOverlay}>
+                          <View style={styles.outOfStockLabel}>
+                            <Text style={styles.outOfStockLabelText}>SOLD OUT</Text>
+                          </View>
+                        </View>
+                      )}
+
+                      {!isRecOutOfStock && (
+                        <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: aiScore > 75 ? '#10B981' : '#6C757D', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                          <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800' }}>Match {aiScore}%</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.cardBody}>
                       <View>
@@ -348,11 +406,11 @@ export default function AppIndex() {
                         <Text style={styles.productPrice}>THB {item.price}</Text>
                       </View>
                       <Pressable 
-                        style={[styles.btnAction, { marginTop: 8, backgroundColor: isRecOutOfStock ? '#E2E8F0' : COLORS.btnBuy }]} 
+                        style={[styles.btnAction, { marginTop: 8, backgroundColor: isRecOutOfStock ? '#CBD5E1' : COLORS.btnBuy }, isRecOutOfStock ? {} : styles.btnActionShadow]} 
                         onPress={() => handleAddToCart(item.id, item.product_name, Number(item.quantity), item.category || 'Mouse')}
                         disabled={isRecOutOfStock}
                       >
-                        <Text style={[styles.btnActionText, isRecOutOfStock && { color: '#94A3B8' }]}>
+                        <Text style={[styles.btnActionText, isRecOutOfStock && { color: '#64748B' }]}>
                           {isRecOutOfStock ? 'Sold Out' : 'Add to Cart'}
                         </Text>
                       </Pressable>
@@ -380,8 +438,19 @@ export default function AppIndex() {
             return (
               <View key={item.id} style={styles.card}>
                 <View style={{ position: 'relative' }}>
-                  {item.image_filename ? <Image source={{ uri: item.image_filename }} style={styles.productImage} /> : <View style={styles.noImageView} />}
-                  {!isAdmin && (
+                  <View style={isOutOfStock ? { opacity: 0.4 } : {}}>
+                    {item.image_filename ? <Image source={{ uri: item.image_filename }} style={styles.productImage} /> : <View style={styles.noImageView} />}
+                  </View>
+
+                  {isOutOfStock && (
+                    <View style={styles.outOfStockOverlay}>
+                      <View style={styles.outOfStockLabel}>
+                        <Text style={styles.outOfStockLabelText}>SOLD OUT</Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {!isAdmin && !isOutOfStock && (
                     <View style={{ position: 'absolute', top: 8, right: 8, backgroundColor: item.aiScore > 75 ? '#10B981' : '#6C757D', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
                       <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '800' }}>Match {item.aiScore}%</Text>
                     </View>
@@ -393,7 +462,9 @@ export default function AppIndex() {
                     <View style={styles.tagWrap}><Text style={styles.tagText}>{item.category || 'Mouse'}</Text></View>
                     <Text style={styles.productName} numberOfLines={2}>{item.product_name}</Text>
                     <Text style={styles.productPrice}>THB {item.price}</Text>
-                    <Text style={[styles.productStock, isOutOfStock && { color: COLORS.btnDelete }]}>Stock: {item.quantity}</Text>
+                    <Text style={[styles.productStock, isOutOfStock && { color: '#EF4444', fontWeight: '800' }]}>
+                      {isOutOfStock ? 'Out of Stock' : `Stock: ${item.quantity}`}
+                    </Text>
                   </View>
 
                   {isAdmin ? (
@@ -406,8 +477,14 @@ export default function AppIndex() {
                       </Pressable>
                     </View>
                   ) : (
-                    <Pressable style={[styles.btnAction, { backgroundColor: isOutOfStock ? '#E2E8F0' : COLORS.btnBuy, marginTop: 8 }]} onPress={() => handleAddToCart(item.id, item.product_name, Number(item.quantity), item.category || 'Mouse')} disabled={isOutOfStock}>
-                      <Text style={[styles.btnActionText, isOutOfStock && {color: '#94A3B8'}]}>{isOutOfStock ? 'Sold Out' : 'Add to Cart'}</Text>
+                    <Pressable 
+                      style={[styles.btnAction, { backgroundColor: isOutOfStock ? '#CBD5E1' : COLORS.btnBuy, marginTop: 8 }, isOutOfStock ? {} : styles.btnActionShadow]} 
+                      onPress={() => handleAddToCart(item.id, item.product_name, Number(item.quantity), item.category || 'Mouse')} 
+                      disabled={isOutOfStock}
+                    >
+                      <Text style={[styles.btnActionText, isOutOfStock && { color: '#64748B' }]}>
+                        {isOutOfStock ? 'Sold Out' : 'Add to Cart'}
+                      </Text>
                     </Pressable>
                   )}
                 </View>
@@ -442,7 +519,7 @@ export default function AppIndex() {
       <Modal visible={showRoulette} transparent animationType="fade">
         <View style={styles.modalBg}>
           <View style={[styles.modalBox, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B', borderWidth: 2 }]}>
-            <Text style={[styles.modalTitle, {color: '#92400E'}]}>✨ Lucky Spin ✨</Text>
+            <Text style={[styles.modalTitle, {color: '#92400E'}]}>Lucky Spin</Text>
             <Text style={{marginBottom: 20, textAlign:'center', color: '#B45309', fontWeight: 'bold'}}>Spins Left: {spins}</Text>
             
             <View style={styles.wheelWrapper}>
@@ -452,24 +529,9 @@ export default function AppIndex() {
                   <React.Fragment key={idx}>
                     <View style={[styles.wheelSlice, { transform: [{ rotate: `${slice.lineAngle}deg` }] }]}><View style={styles.sliceLine} /></View>
                     <View style={[styles.wheelSlice, { transform: [{ rotate: `${slice.textAngle}deg` }] }]}>
-                      
-                      {slice.name === "iPhone 18 Pro Max" ? (
-                        <View style={{ marginTop: 14, alignItems: 'center' }}>
-                          <Image 
-                            source={{ uri: 'https://images.unsplash.com/photo-1592899677974-c46681fa5336?q=80&w=200&auto=format&fit=crop' }} 
-                            style={{ width: 14, height: 26, borderRadius: 2, resizeMode: 'cover' }} 
-                          />
-                        </View>
-                      ) : (
-                        <Text style={[
-                          styles.sliceText, 
-                          slice.name === "15% Discount" && { fontSize: 8, marginTop: 22 },
-                          slice.name === "10% Discount" && { fontSize: 10, marginTop: 20 }
-                        ]}>
-                          {slice.name}
-                        </Text>
-                      )}
-
+                      <Text style={[styles.sliceText, { fontSize: 12, marginTop: 20 }]}>
+                        {slice.name === "iPhone 18 Pro Max" ? "iPhone\n18 Pro" : slice.name}
+                      </Text>
                     </View>
                   </React.Fragment>
                 ))}
@@ -497,26 +559,49 @@ export default function AppIndex() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.primaryBg },
   
-  /* ปรับแต่ง Header ใหม่ จัดวาง Flexbox ให้ซ้ายสุดเป็นโลโก้ ขวาสุดเป็นกลุ่มปุ่มโปรไฟล์/เงิน/ออก */
-  header: { backgroundColor: COLORS.headerBg, paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: COLORS.border },
-  headerTitleWrap: { flex: 1 },
-  headerTitle: { color: COLORS.textDark, fontSize: isSmallScreen ? 18 : 20, fontWeight: '900', letterSpacing: 0.5 },
-  userRoleText: { color: COLORS.textLight, fontSize: isSmallScreen ? 11 : 12, fontWeight: '600', marginTop: 2 },
+  header: { backgroundColor: COLORS.headerBg, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: COLORS.border },
+  headerLeftGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   
-  /* กลุ่มปุ่มฝั่งขวา */
-  headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  avatarRing: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 2, 
+  },
+  logoImage: { width: '100%', height: '100%', borderRadius: 22 },
+  
+  userInfoCol: { flexDirection: 'column', justifyContent: 'center' },
+  userRoleBadge: { fontSize: 10, fontWeight: '800', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5 },
+  userNameText: { fontSize: 14, fontWeight: '900', color: COLORS.textDark },
+  
+  headerRightGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  btnNavSolid: { backgroundColor: COLORS.textDark, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center' },
+  btnNavSolidText: { color: COLORS.white, fontWeight: '800', fontSize: 11 },
+  btnNavGold: { backgroundColor: '#F59E0B', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center' },
+  btnNavGoldText: { color: COLORS.white, fontWeight: '900', fontSize: 11 },
+  btnLogout: { backgroundColor: '#FEE2E2', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center' },
+  logoutText: { color: '#EF4444', fontSize: 11, fontWeight: '900' },
 
-  btnNavSolid: { backgroundColor: COLORS.textDark, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, alignItems: 'center' },
-  btnNavSolidText: { color: COLORS.white, fontWeight: '700', fontSize: isSmallScreen ? 11 : 12 },
-  
-  btnNavGold: { backgroundColor: '#D97706', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, alignItems: 'center' },
-  btnNavGoldText: { color: COLORS.white, fontWeight: '800', fontSize: isSmallScreen ? 11 : 12 },
-  
-  btnLogout: { paddingHorizontal: 8, paddingVertical: 8 },
-  logoutText: { color: COLORS.btnDelete, fontSize: isSmallScreen ? 13 : 14, fontWeight: '800' },
-  
   rankBanner: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#F8FAFC', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: COLORS.border },
-  rankBannerText: { fontWeight: '800', fontSize: 13, color: '#94A3B8' },
+  
+  rankBadge: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20, 
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  rankBannerText: { fontWeight: '900', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 },
   
   btnBannerCart: { backgroundColor: '#0F172A', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, alignItems: 'center', flexDirection: 'row' },
   btnBannerCartText: { color: COLORS.white, fontWeight: '700', fontSize: isSmallScreen ? 11 : 12 },
@@ -527,10 +612,22 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 16, paddingBottom: 120 },
   sectionContainer: { marginBottom: 24 },
   
-  searchInput: { height: 44, backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 16, marginBottom: 16, fontSize: 14 },
+  // สไตล์ช่องค้นหาใหม่
+  searchContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#F1F5F9', 
+    borderRadius: 14, 
+    paddingHorizontal: 16, 
+    marginBottom: 16,
+    height: 48
+  },
+  searchIcon: { fontSize: 16, marginRight: 10 },
+  searchInputModern: { flex: 1, fontSize: 15, color: COLORS.textDark, height: '100%' },
   
-  catDropdownBtn: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 24, alignItems: 'center' },
+  catDropdownBtn: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 24, alignItems: 'center' },
   catDropdownText: { color: COLORS.textDark, fontWeight: '700', fontSize: 14 },
+  
   catModalBox: { backgroundColor: COLORS.white, width: '80%', maxWidth: 320, padding: 20, borderRadius: 16 },
   catOptionBtn: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, alignItems: 'center' },
   catOptionBtnActive: { backgroundColor: COLORS.activeCat, borderRadius: 8, borderBottomWidth: 0 },
@@ -542,27 +639,102 @@ const styles = StyleSheet.create({
   btnAddNew: { backgroundColor: COLORS.textDark, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   btnAddNewText: { color: COLORS.white, fontWeight: '700', fontSize: isSmallScreen ? 11 : 12 },
   
-  recScrollContent: { gap: 12, paddingRight: 16 },
-  recCard: { width: 150, height: 240, backgroundColor: COLORS.white, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', flexDirection: 'column' },
+  recScrollContent: { gap: 14, paddingRight: 16, paddingBottom: 10 },
+  
+  // เพิ่มเงาให้กล่องสินค้าแนะนำ
+  recCard: { 
+    width: 150, 
+    height: 240, 
+    backgroundColor: COLORS.white, 
+    borderRadius: 16, 
+    overflow: 'hidden', 
+    flexDirection: 'column',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4
+  },
   recImage: { width: '100%', height: 110, resizeMode: 'cover' },
   recNoImage: { width: '100%', height: 110, backgroundColor: '#F1F5F9' },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 16 },
-  card: { width: '48%', backgroundColor: COLORS.white, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden', flexDirection: 'column' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 16, paddingBottom: 10 },
+  
+  // เพิ่มเงาให้กล่องสินค้าหลัก
+  card: { 
+    width: '48%', 
+    backgroundColor: COLORS.white, 
+    borderRadius: 16, 
+    overflow: 'hidden', 
+    flexDirection: 'column',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4
+  },
   productImage: { width: '100%', aspectRatio: 1 },
   noImageView: { width: '100%', aspectRatio: 1, backgroundColor: '#F1F5F9' },
-  cardBody: { padding: 10, flex: 1, justifyContent: 'space-between' },
+  cardBody: { padding: 12, flex: 1, justifyContent: 'space-between' },
   tagWrap: { backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginBottom: 6 },
   tagText: { fontSize: 10, fontWeight: '700', color: COLORS.textLight },
   productName: { fontSize: isSmallScreen ? 13 : 14, fontWeight: '800', marginBottom: 4, color: COLORS.textDark },
-  productPrice: { fontSize: isSmallScreen ? 12 : 13, color: '#10B981', fontWeight: '800', marginBottom: 4 },
+  productPrice: { fontSize: isSmallScreen ? 12 : 13, color: '#10B981', fontWeight: '900', marginBottom: 4 },
   productStock: { fontSize: isSmallScreen ? 11 : 12, color: COLORS.textLight, fontWeight: '600' },
   
+  outOfStockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  outOfStockLabel: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    transform: [{ rotate: '-10deg' }],
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  outOfStockLabelText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900', letterSpacing: 1 },
+  
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, gap: 8 },
-  btnAction: { paddingVertical: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  
+  btnAction: { paddingVertical: 10, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  // เงาเสริมสำหรับปุ่ม Add to Cart
+  btnActionShadow: {
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   btnActionText: { color: COLORS.white, fontWeight: '800', fontSize: isSmallScreen ? 11 : 12 },
   
-  fabSpin: { position: 'absolute', right: 16, backgroundColor: '#FDE68A', paddingVertical: 14, paddingHorizontal: 22, borderRadius: 30, borderWidth: 2, borderColor: '#F59E0B', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 6, zIndex: 999 },
+  // ปรับเงาปุ่ม Spin ให้ลอยเด้งน่ากด
+  fabSpin: { 
+    position: 'absolute', 
+    right: 16, 
+    backgroundColor: '#FDE68A', 
+    paddingVertical: 14, 
+    paddingHorizontal: 22, 
+    borderRadius: 30, 
+    borderWidth: 2, 
+    borderColor: '#F59E0B', 
+    shadowColor: '#D97706', 
+    shadowOffset: { width: 0, height: 6 }, 
+    shadowOpacity: 0.4, 
+    shadowRadius: 8, 
+    elevation: 8, 
+    zIndex: 999 
+  },
   fabSpinText: { color: '#92400E', fontWeight: '900', fontSize: isSmallScreen ? 13 : 15 },
   
   modalBg: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -578,6 +750,6 @@ const styles = StyleSheet.create({
   
   rouletteResultBox: { backgroundColor: '#FFFFFF', padding: 20, borderRadius: 12, alignItems: 'center', justifyContent: 'center', minHeight: 80, borderWidth: 1, borderColor: '#FDE68A' },
   rouletteResultText: { fontSize: 18, fontWeight: '900', color: '#D97706', textAlign: 'center' },
-  btnSpin: { paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
+  btnSpin: { paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
   btnSpinText: { color: COLORS.white, fontWeight: '900', fontSize: 14, letterSpacing: 0.5 }
 });

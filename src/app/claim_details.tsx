@@ -1,81 +1,163 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Dimensions, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 
-const { width } = Dimensions.get('window');
-const isSmallScreen = width < 375;
+const API_BASE_URL = 'http://119.59.102.161:3095/api';
+
 const COLORS = {
-  primaryBg: '#F8FAFC', white: '#FFFFFF', textDark: '#0F172A', textLight: '#64748B',
-  border: '#E2E8F0', btnPrimary: '#0F172A', btnCancel: '#EF4444'
+  primaryBg: '#F8F9FA', white: '#FFFFFF', textDark: '#0F172A', textLight: '#64748B',
+  border: '#E2E8F0', btnSubmit: '#EF4444', btnCancel: '#64748B', btnPrimary: '#0D6EFD',
+  btnUpload: '#E2E8F0', iconUpload: '#64748B'
 };
 
 export default function ClaimDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams();
-  const currentUsername = (params.username as string) || 'User';
+  const currentUsername = params.username as string;
 
-  const [productName, setProductName] = useState('');
-  const [snNumber, setSnNumber] = useState('');
-  const [issueDetail, setIssueDetail] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [userOrders, setUserOrders] = useState<any[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState('');
+  const [issueDesc, setIssueDesc] = useState('');
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [claimSuccessData, setClaimSuccessData] = useState<any>(null);
 
-  // ฟังก์ชันเลือกรูปภาพจากเครื่องโดยใช้ Native Web File Input (ไม่ต้องลง lib เพิ่ม)
-  const handlePickLocalImage = () => {
+  useEffect(() => {
+    fetchUserOrders();
+  }, []);
+
+  const fetchUserOrders = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/user-orders/${currentUsername}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUserOrders(data);
+      }
+    } catch (e) {
+      console.log('Failed to fetch orders');
+    }
+  };
+
+  const pickImageWeb = () => {
     if (Platform.OS === 'web') {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
       input.onchange = (e: any) => {
-        const file = e.target?.files?.[0];
+        const file = e.target.files[0];
         if (file) {
           const reader = new FileReader();
-          reader.onload = (uploadEvent) => {
-            const base64Data = uploadEvent.target?.result as string;
-            if (base64Data) {
-              setImageUrl(base64Data);
-            }
+          reader.onload = (ev) => {
+            setImageBase64(ev.target?.result as string);
           };
           reader.readAsDataURL(file);
         }
       };
       input.click();
-    } else {
-      Toast.show({ type: 'info', text1: 'Photo upload', text2: 'Please run on web browser or use URL.' });
     }
   };
 
   const handleSubmitClaim = async () => {
-    if (!productName || !snNumber || !issueDetail) {
-      return Toast.show({ type: 'error', text1: 'Missing Information', text2: 'Please fill in all required fields.' });
+    if (!selectedOrderId.trim() || !issueDesc.trim()) {
+      Toast.show({ type: 'error', text1: 'Missing Information', text2: 'Please select an order and describe the issue.' });
+      return;
     }
-    
+
+    setIsSubmitting(true);
     try {
-      const res = await fetch(`http://119.59.102.161:3095/api/claims`, {
+      const res = await fetch(`${API_BASE_URL}/claim`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: currentUsername,
-          productName: productName.trim(),
-          snNumber: snNumber.trim(),
-          issueDetail: issueDetail.trim(),
-          imageUrl: imageUrl.trim()
+          order_id: selectedOrderId,
+          issue_description: issueDesc,
+          image_base64: imageBase64 
         })
       });
 
       if (res.ok) {
-        Toast.show({ type: 'success', text1: 'Claim Submitted Successfully', text2: 'Our team will contact you shortly.' });
-        setTimeout(() => {
-          if (router.canGoBack()) router.back();
-          else router.replace({ pathname: '/', params: { logged_in: 'true', username: currentUsername } });
-        }, 2000);
+        Toast.show({ type: 'success', text1: 'Claim Submitted', text2: 'Linked with ' + selectedOrderId });
+        setClaimSuccessData({
+          order_id: selectedOrderId,
+          issue_description: issueDesc,
+          date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+          image_base64: imageBase64 
+        });
       } else {
-        Toast.show({ type: 'error', text1: 'Submission Failed', text2: 'Please try again later.' });
+        Toast.show({ type: 'error', text1: 'Error', text2: 'Unable to submit claim request.' });
       }
     } catch (e) {
-      Toast.show({ type: 'error', text1: 'Network Error', text2: 'Check your connection.' });
+      Toast.show({ type: 'error', text1: 'Network Error', text2: 'Please check your connection.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const downloadClaimPdf = () => {
+    if (Platform.OS === 'web' && claimSuccessData) {
+      Toast.show({ type: 'info', text1: 'Preparing Document', text2: 'Please select "Save as PDF" in print menu.' });
+
+      const imageElement = claimSuccessData.image_base64 
+        ? `<div style="margin-top: 20px; text-align: center;">
+             <p style="text-align: left; font-size: 14px; font-weight: bold; color: #0F172A; margin-bottom: 10px;">Attached Image:</p>
+             <img src="${claimSuccessData.image_base64}" style="max-width: 100%; max-height: 400px; border-radius: 8px; border: 1px solid #CBD5E1;" />
+           </div>`
+        : '';
+
+      const content = `
+        <html>
+        <head>
+          <title>Claim Form - ${claimSuccessData.order_id}</title>
+          <style>
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1E293B; padding: 20px; }
+            .container { width: 100%; max-width: 800px; margin: 0 auto; }
+            .header { text-align: center; border-bottom: 2px solid #E2E8F0; padding-bottom: 15px; margin-bottom: 25px; }
+            .header h1 { margin: 0; font-size: 24px; color: #0F172A; }
+            .info-sec p { margin: 10px 0; font-size: 14px; }
+            .desc-box { margin-top: 20px; padding: 15px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; }
+            .desc-title { font-size: 14px; font-weight: bold; color: #0F172A; margin: 0; }
+            .desc-text { margin: 8px 0 0 0; font-size: 14px; color: #475569; }
+            .footer { margin-top: 50px; text-align: center; color: #94A3B8; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>WARRANTY CLAIM FORM</h1>
+              <p>1IT Store</p>
+            </div>
+            <div class="info-sec">
+              <p><strong>Customer:</strong> ${currentUsername}</p>
+              <p><strong>Date:</strong> ${claimSuccessData.date}</p>
+              <p><strong>Order ID:</strong> ${claimSuccessData.order_id}</p>
+            </div>
+            <div class="desc-box">
+              <p class="desc-title">Issue Description:</p>
+              <p class="desc-text">${claimSuccessData.issue_description}</p>
+            </div>
+            ${imageElement}
+            <div class="footer">
+              <p>This claim form is generated automatically.</p>
+            </div>
+          </div>
+          <script>
+            window.onload = function() { 
+              setTimeout(function() { window.print(); window.onafterprint = function(){ window.close(); } }, 500);
+            };
+          </script>
+        </body>
+        </html>
+      `;
+
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(content);
+        printWindow.document.close();
+      }
     }
   };
 
@@ -83,49 +165,94 @@ export default function ClaimDetailsScreen() {
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Warranty Claim</Text>
-        <Pressable onPress={() => {
-            if (router.canGoBack()) router.back();
-            else router.replace({ pathname: '/', params: { logged_in: 'true', username: currentUsername } });
-        }}>
-          <Text style={styles.backText}>Cancel</Text>
+        <Pressable onPress={() => { router.replace({ pathname: '/', params: { logged_in: 'true', username: currentUsername } }); }}>
+          <Text style={styles.backText}>Close</Text>
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.formCard}>
-          <Text style={styles.cardTitle}>Claim Information</Text>
-          <Text style={styles.cardSubtitle}>Submitted by: <Text style={{fontWeight: '700'}}>{currentUsername}</Text></Text>
-
-          <Text style={styles.label}>Product Name</Text>
-          <TextInput style={styles.input} placeholder="e.g. Gaming Mouse X1" placeholderTextColor="#94A3B8" value={productName} onChangeText={setProductName} />
-
-          <Text style={styles.label}>Serial Number</Text>
-          <TextInput style={styles.input} placeholder="e.g. SN-123456789" placeholderTextColor="#94A3B8" value={snNumber} onChangeText={setSnNumber} />
-
-          <Text style={styles.label}>Product Image</Text>
-          <Pressable style={styles.btnPickImage} onPress={handlePickLocalImage}>
-             <Text style={styles.btnPickImageText}>Choose Image from Device</Text>
-          </Pressable>
+      {claimSuccessData ? (
+        <View style={styles.successContainer}>
+          <Text style={styles.successTitle}>Claim Submitted Successfully</Text>
+          <Text style={styles.successSubtitle}>Linked to order {claimSuccessData.order_id}</Text>
           
-          {imageUrl.trim() !== '' && (
-            <View style={styles.imgPreviewContainer}>
-              <View style={styles.imgPreviewBox}>
-                <Image source={{ uri: imageUrl }} style={styles.imgPreview} resizeMode="contain" />
-              </View>
-              <Pressable style={styles.btnRemoveImg} onPress={() => setImageUrl('')}>
-                <Text style={styles.btnRemoveImgText}>Remove Image</Text>
-              </Pressable>
-            </View>
-          )}
+          <Pressable style={styles.btnPrintPrimary} onPress={downloadClaimPdf}>
+            <Text style={styles.btnPrintText}>Download Claim Form</Text>
+          </Pressable>
 
-          <Text style={styles.label}>Issue Description</Text>
-          <TextInput style={[styles.input, styles.textArea]} placeholder="Describe the defect or problem in detail..." placeholderTextColor="#94A3B8" multiline value={issueDetail} onChangeText={setIssueDetail} />
-
-          <Pressable style={styles.btnSubmit} onPress={handleSubmitClaim}>
-            <Text style={styles.btnSubmitText}>Submit Request</Text>
+          <Pressable style={styles.btnBackToShop} onPress={() => { router.replace({ pathname: '/', params: { logged_in: 'true', username: currentUsername } }); }}>
+            <Text style={styles.btnBackToShopText}>Back to Home</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      ) : (
+        <>
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.infoBox}>
+              <Text style={styles.infoText}>Select your purchase order below to file a warranty claim.</Text>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Select Order from History</Text>
+              {userOrders.length === 0 ? (
+                <Text style={{color: COLORS.textLight, fontSize: 13}}>No purchase history found.</Text>
+              ) : (
+                <View style={styles.orderPickerGrid}>
+                  {userOrders.map((ord) => {
+                    const isSelected = selectedOrderId === ord.order_id;
+                    return (
+                      <Pressable 
+                        key={ord.order_id} 
+                        style={[styles.orderOptionCard, isSelected && styles.orderOptionCardActive]}
+                        onPress={() => setSelectedOrderId(ord.order_id)}
+                      >
+                        <Text style={[styles.orderOptionTitle, isSelected && {color: COLORS.btnPrimary}]}>{ord.order_id}</Text>
+                        <Text style={styles.orderOptionSubtitle}>THB {Number(ord.total).toLocaleString()}</Text>
+                        <Text style={styles.orderOptionItems} numberOfLines={1}>
+                          {ord.items.map((i: any) => i.product_name).join(', ')}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Selected Order ID</Text>
+              <TextInput style={styles.input} value={selectedOrderId} onChangeText={setSelectedOrderId} placeholder="e.g. ORD-8" placeholderTextColor="#94A3B8" />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Issue Description</Text>
+              <TextInput style={[styles.input, styles.textArea]} value={issueDesc} onChangeText={setIssueDesc} placeholder="Describe the issue in detail..." placeholderTextColor="#94A3B8" multiline />
+            </View>
+            
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Attach Image (Optional)</Text>
+              <View style={styles.imageGrid}>
+                  {imageBase64 ? (
+                      <View style={styles.imageWrapper}>
+                          <Image source={{ uri: imageBase64 }} style={styles.thumbnail} />
+                          <Pressable style={styles.removeImageBtn} onPress={() => setImageBase64(null)}>
+                              <Text style={styles.removeImageText}>X</Text>
+                          </Pressable>
+                      </View>
+                  ) : (
+                      <Pressable style={styles.uploadBtn} onPress={pickImageWeb}>
+                          <Text style={styles.uploadIcon}>+</Text>
+                          <Text style={styles.uploadText}>Choose File</Text>
+                      </Pressable>
+                  )}
+              </View>
+            </View>
+          </ScrollView>
+
+          <View style={styles.footer}>
+            <Pressable style={[styles.btnSubmit, isSubmitting && { opacity: 0.5 }]} onPress={handleSubmitClaim} disabled={isSubmitting}>
+              <Text style={styles.btnSubmitText}>{isSubmitting ? 'Submitting...' : 'Submit Claim Request'}</Text>
+            </Pressable>
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -133,27 +260,37 @@ export default function ClaimDetailsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.primaryBg },
   header: { backgroundColor: COLORS.white, padding: 20, flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderColor: COLORS.border, alignItems: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '900', color: COLORS.textDark, letterSpacing: 0.5 },
-  backText: { fontSize: 15, color: COLORS.textLight, fontWeight: '700' },
-  scrollContent: { padding: 16 },
-  
-  formCard: { backgroundColor: COLORS.white, padding: 24, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  cardTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textDark, marginBottom: 4 },
-  cardSubtitle: { fontSize: 13, color: COLORS.textLight, marginBottom: 24 },
-  
-  label: { fontSize: 12, fontWeight: '800', color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: COLORS.textDark, marginBottom: 20 },
-  textArea: { height: 120, textAlignVertical: 'top' },
-  
-  btnPickImage: { backgroundColor: '#F1F5F9', borderWidth: 1.5, borderColor: '#CBD5E1', borderStyle: 'dashed', borderRadius: 10, paddingVertical: 16, alignItems: 'center', marginBottom: 16 },
-  btnPickImageText: { color: '#475569', fontSize: 14, fontWeight: '700' },
-  
-  imgPreviewContainer: { marginBottom: 20, alignItems: 'center' },
-  imgPreviewBox: { width: '100%', height: 180, backgroundColor: '#F8FAFC', borderRadius: 10, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#CBD5E1' },
-  imgPreview: { width: '100%', height: '100%' },
-  btnRemoveImg: { marginTop: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  btnRemoveImgText: { color: COLORS.btnCancel, fontSize: 12, fontWeight: '700' },
-  
-  btnSubmit: { backgroundColor: COLORS.btnPrimary, paddingVertical: 16, borderRadius: 10, alignItems: 'center', marginTop: 10, shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 4 },
-  btnSubmitText: { color: COLORS.white, fontSize: 15, fontWeight: '900', letterSpacing: 0.5 }
+  headerTitle: { fontSize: 20, fontWeight: '900', color: COLORS.textDark, textTransform: 'uppercase' },
+  backText: { fontSize: 16, color: COLORS.btnCancel, fontWeight: '700' },
+  scrollContent: { padding: 20 },
+  infoBox: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#CBD5E1', marginBottom: 20 },
+  infoText: { fontSize: 13, color: '#0F172A', lineHeight: 20, textAlign: 'center' },
+  formGroup: { marginBottom: 20 },
+  label: { fontSize: 13, fontWeight: '800', color: '#475569', marginBottom: 8, marginLeft: 4 },
+  input: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12, paddingHorizontal: 16, height: 50, fontSize: 14, color: COLORS.textDark },
+  textArea: { height: 120, paddingTop: 14, textAlignVertical: 'top' },
+  orderPickerGrid: { gap: 10 },
+  orderOptionCard: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12 },
+  orderOptionCardActive: { borderColor: COLORS.btnPrimary, backgroundColor: '#F0F9FF' },
+  orderOptionTitle: { fontSize: 14, fontWeight: '800', color: COLORS.textDark },
+  orderOptionSubtitle: { fontSize: 12, color: '#10B981', fontWeight: '700', marginTop: 2 },
+  orderOptionItems: { fontSize: 12, color: COLORS.textLight, marginTop: 4 },
+  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
+  imageWrapper: { position: 'relative', width: 100, height: 100 },
+  thumbnail: { width: '100%', height: '100%', borderRadius: 8, borderWidth: 1, borderColor: COLORS.border },
+  removeImageBtn: { position: 'absolute', top: -5, right: -5, backgroundColor: COLORS.btnCancel, width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', zIndex: 1 },
+  removeImageText: { color: COLORS.white, fontSize: 10, fontWeight: 'bold' },
+  uploadBtn: { width: 100, height: 100, backgroundColor: COLORS.btnUpload, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderStyle: 'dashed', borderColor: COLORS.iconUpload },
+  uploadIcon: { fontSize: 24, color: COLORS.iconUpload, marginBottom: 4 },
+  uploadText: { fontSize: 10, color: COLORS.iconUpload, fontWeight: '600' },
+  footer: { padding: 20, backgroundColor: COLORS.white, borderTopWidth: 1, borderColor: COLORS.border },
+  btnSubmit: { backgroundColor: COLORS.btnSubmit, height: 54, borderRadius: 12, alignItems: 'center', justifyContent: 'center', shadowColor: '#EF4444', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
+  btnSubmitText: { color: COLORS.white, fontSize: 16, fontWeight: '800', letterSpacing: 0.5 },
+  successContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  successTitle: { fontSize: 22, fontWeight: '900', color: '#10B981', marginBottom: 10, textAlign: 'center' },
+  successSubtitle: { fontSize: 14, color: '#64748B', fontWeight: '500', marginBottom: 30, textAlign: 'center' },
+  btnPrintPrimary: { width: '100%', maxWidth: 300, backgroundColor: COLORS.btnPrimary, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginBottom: 20, shadowColor: COLORS.btnPrimary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 },
+  btnPrintText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  btnBackToShop: { paddingVertical: 10, paddingHorizontal: 20 },
+  btnBackToShopText: { color: '#64748B', fontSize: 14, fontWeight: '800' }
 });
