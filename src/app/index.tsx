@@ -42,8 +42,8 @@ const calculateGlobalAIMatch = (productCategory: string, globalStats: Record<str
 };
 
 const PRIZES_DATA = [
-  { name: "5% Discount", angle: 130 },       
-  { name: "No Prize", angle: 190 },          
+  { name: "5% Discount", angle: 135 },       
+  { name: "No Prize", angle: 185 },          
   { name: "10% Discount", angle: 20 },       
   { name: "15% Discount", angle: 15 },       
   { name: "iPhone 18 Pro Max", angle: 5 }   
